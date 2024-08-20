@@ -8,14 +8,19 @@ using Newtonsoft.Json;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
-builder.AddAzureCosmosClient("cosmos");
-builder.AddCosmosDbContext<TestCosmosContext>("cosmos", "ef");
 
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
-app.MapGet("/", async (CosmosClient cosmosClient) =>
+app.MapGet("/", async () =>
 {
+    var cosmosConnString = Environment.GetEnvironmentVariable("CosmosConnString");
+    if (string.IsNullOrEmpty(cosmosConnString))
+    {
+        throw new InvalidOperationException("CosmosConnString environment variable is not set.");
+    }
+
+    var cosmosClient = new CosmosClient(cosmosConnString);
     var db = (await cosmosClient.CreateDatabaseIfNotExistsAsync("db")).Database;
     var container = (await db.CreateContainerIfNotExistsAsync("entries", "/Id")).Container;
 
@@ -45,8 +50,18 @@ app.MapGet("/", async (CosmosClient cosmosClient) =>
     };
 });
 
-app.MapGet("/ef", async (TestCosmosContext context) =>
+app.MapGet("/ef", async () =>
 {
+    var cosmosConnString = Environment.GetEnvironmentVariable("CosmosConnString");
+    if (string.IsNullOrEmpty(cosmosConnString))
+    {
+        throw new InvalidOperationException("CosmosConnString environment variable is not set.");
+    }
+
+    var optionsBuilder = new DbContextOptionsBuilder<TestCosmosContext>();
+    optionsBuilder.UseCosmos(cosmosConnString, databaseName: "ef");
+
+    using var context = new TestCosmosContext(optionsBuilder.Options);
     await context.Database.EnsureCreatedAsync();
 
     context.Entries.Add(new EntityFrameworkEntry());
